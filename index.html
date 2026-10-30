@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vôlei Arcade</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1280" height="720"></canvas>
+
+  <!-- MENU -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>VÔLEI<span>ARCADE</span></h1>
+      <p class="tag">de 1 a 6 jogadores por equipe · câmera de cima · quanto mais alta a bola, maior ela fica</p>
+
+      <div class="group"><label>Modo</label>
+        <div class="seg" data-key="mode">
+          <button data-val="1">1 JOGADOR</button>
+          <button data-val="2">2 JOGADORES</button>
+        </div>
+      </div>
+      <div class="group"><label>Por equipe</label>
+        <div class="seg" data-key="size">
+          <button data-val="1">1</button><button data-val="2">2</button><button data-val="3">3</button>
+          <button data-val="4">4</button><button data-val="5">5</button><button data-val="6">6</button>
+        </div>
+      </div>
+      <p class="note">Com 1 jogador por equipe são 2 toques; de 2 a 6, 3 toques.</p>
+      <div class="group"><label>Dificuldade</label>
+        <div class="seg" data-key="diff">
+          <button data-val="facil">FÁCIL</button>
+          <button data-val="normal">NORMAL</button>
+          <button data-val="dificil">DIFÍCIL</button>
+        </div>
+      </div>
+      <div class="group"><label>Pontos</label>
+        <div class="seg" data-key="target">
+          <button data-val="7">7</button>
+          <button data-val="11">11</button>
+          <button data-val="15">15</button>
+        </div>
+      </div>
+      <div class="group"><label>Cenário</label>
+        <div class="seg" data-key="theme">
+          <button data-val="praia">PRAIA</button>
+          <button data-val="ginasio">GINÁSIO</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnPlay" class="big">JOGAR <small>Enter</small></button>
+        <button id="btnOnline" class="alt">ONLINE</button>
+        <button id="btnHelp" class="alt">COMO JOGAR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ONLINE -->
+  <div id="online" class="overlay hidden">
+    <div class="panel small-panel">
+      <h2>ONLINE</h2>
+      <div id="onHome">
+        <p class="small">O anfitrião escolhe tamanho, dificuldade e pontos no menu antes de criar a sala. O outro jogador entra com o código e joga contra você.</p>
+        <div class="actions col">
+          <button id="btnOnCreate" class="big">CRIAR SALA</button>
+          <div class="join"><input id="onCode" maxlength="5" placeholder="CÓDIGO" autocomplete="off"><button id="btnOnJoin" class="alt">ENTRAR</button></div>
+        </div>
+      </div>
+      <div id="onLobby" class="hidden">
+        <p class="small">Código da sala</p>
+        <div class="roomcode" id="onCodeShow">-----</div>
+        <p class="small linkline" id="onLink"></p>
+        <p class="small" id="onWho"></p>
+        <div class="actions col">
+          <button id="btnOnStart" class="big">COMEÇAR</button>
+          <button id="btnOnCopy" class="alt">COPIAR LINK</button>
+        </div>
+      </div>
+      <p class="small status" id="onStatus"></p>
+      <div class="actions"><button id="btnOnBack" class="alt">VOLTAR</button></div>
+    </div>
+  </div>
+
+  <!-- AJUDA -->
+  <div id="help" class="overlay hidden">
+    <div class="panel wide">
+      <h2>COMO JOGAR</h2>
+      <div class="cols">
+        <div>
+          <h3>1 jogador</h3>
+          <table>
+            <tr><td><b>Num 8 4 5 6</b></td><td>Mover (WASD e setas também)</td></tr>
+            <tr><td><b>Num 1</b></td><td>Pochete (manchete)</td></tr>
+            <tr><td><b>Num 2</b></td><td>Levantada · no ar: largada</td></tr>
+            <tr><td><b>Num 3</b></td><td>Cortada (pula e ataca)</td></tr>
+            <tr><td><b>Num 0</b></td><td>Pular / bloquear</td></tr>
+            <tr><td><b>Num .</b> / <b>Num Enter</b></td><td>Mergulho (peixinho)</td></tr>
+          </table>
+          <h3>2 jogadores</h3>
+          <table>
+            <tr><td><b>J1</b></td><td>WASD · F G H · Espaço · Shift esq.</td></tr>
+            <tr><td><b>J2</b></td><td>Setas · Num 1 2 3 · Num 0 · Num . / Shift dir.</td></tr>
+          </table>
+          <p class="small">Os demais jogadores da equipe são controlados pelo computador.</p>
+        </div>
+        <div>
+          <h3>Os golpes</h3>
+          <ul>
+            <li><b>Pochete</b> — bola baixa (anel azul). Recebe saques e defende. Segure uma direção para mirar.</li>
+            <li><b>Levantada</b> — bola na altura da cabeça (anel amarelo). Passe preciso para o parceiro cortar.</li>
+            <li><b>Cortada</b> — aperte quando a bola estiver caindo perto da rede (anel vermelho): o personagem pula e ataca. A direção que você segura define o canto.</li>
+            <li><b>Bloqueio</b> — pule (Num 0) junto à rede quando o rival atacar.</li>
+            <li><b>Mergulho</b> — arrancada com alcance enorme para bolas distantes. Depois você demora a levantar.</li>
+            <li><b>Largada</b> — no ar, aperte levantada para empurrar a bola curta por cima da rede.</li>
+          </ul>
+          <h3>Saque</h3>
+          <p class="small">Segure <b>Num 1</b> (por baixo), <b>Num 2</b> (flutuante) ou <b>Num 3</b> (viagem). A barra enche: solte na faixa verde. <b>Num 8/5</b> (ou W/S) mira o lado.</p>
+          <h3>Rodízio</h3>
+          <p class="small">A cada vez que sua equipe recupera o saque, todos giram uma posição (com 3 a 6 jogadores) e quem chega ao fundo à direita saca. Com 2 jogadores, o saque alterna.</p>
+          <h3>Dicas</h3>
+          <p class="small">A sombra mostra onde a bola está no chão. O círculo no piso mostra onde ela vai chegar na altura do toque. São 3 toques por time (2 com 1 jogador só), e o mesmo jogador não toca duas vezes seguidas quando há companheiros. <b>Esc</b> pausa · <b>M</b> som.</p>
+        </div>
+      </div>
+      <div class="actions"><button id="btnHelpBack" class="big">VOLTAR</button></div>
+    </div>
+  </div>
+
+  <!-- PAUSA -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel small-panel">
+      <h2>PAUSADO</h2>
+      <div class="actions col">
+        <button id="btnResume" class="big">CONTINUAR</button>
+        <button id="btnRestart" class="alt">REINICIAR PARTIDA</button>
+        <button id="btnQuit" class="alt">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIM -->
+  <div id="over" class="overlay hidden">
+    <div class="panel small-panel">
+      <h2 id="overTitle">FIM DE JOGO</h2>
+      <div id="overScore" class="bigscore">0 x 0</div>
+      <div class="actions col">
+        <button id="btnAgain" class="big">JOGAR DE NOVO <small>R</small></button>
+        <button id="btnMenu" class="alt">MENU</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
