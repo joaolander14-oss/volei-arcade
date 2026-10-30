@@ -52,6 +52,11 @@ const ball = {
 
 /* ============================== ENTRADA ============================= */
 const keys = new Set(), edgeDown = new Set(), edgeUp = new Set();
+// Celular: joystick virtual (analógico) + botões que viram "teclas" T* nas listas de controles
+let IS_TOUCH = false;
+try { IS_TOUCH = matchMedia('(pointer: coarse)').matches || /[?&]touch=1/.test(location.search); } catch (e) { /* ok */ }
+const touchMove = { on: false, x: 0, y: 0 };
+const TOUCH_LABEL = { pochete: 'P', set: 'L', spike: 'C' };
 const GAMEKEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'NumpadEnter', 'NumpadDecimal', 'ShiftLeft', 'ShiftRight',
   ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => 'Numpad' + n)]);
 const held = a => a.some(k => keys.has(k));
@@ -60,13 +65,13 @@ const edge = a => a.some(k => edgeDown.has(k));
 // Ações no teclado numérico; WASD/setas continuam valendo para andar.
 const CTRL_SOLO = {
   up: ['Numpad8', 'KeyW', 'ArrowUp'], down: ['Numpad5', 'KeyS', 'ArrowDown'], left: ['Numpad4', 'KeyA', 'ArrowLeft'], right: ['Numpad6', 'KeyD', 'ArrowRight'],
-  pochete: ['Numpad1', 'KeyJ'], set: ['Numpad2', 'KeyK'], spike: ['Numpad3', 'KeyL'],
-  jump: ['Numpad0', 'Space'], dive: ['NumpadDecimal', 'NumpadEnter', 'ShiftLeft', 'ShiftRight', 'KeyV'], label: { pochete: '1', set: '2', spike: '3' },
+  pochete: ['Numpad1', 'KeyJ', 'TP'], set: ['Numpad2', 'KeyK', 'TL'], spike: ['Numpad3', 'KeyL', 'TC'],
+  jump: ['Numpad0', 'Space', 'TJ'], dive: ['NumpadDecimal', 'NumpadEnter', 'ShiftLeft', 'ShiftRight', 'KeyV', 'TD'], label: { pochete: '1', set: '2', spike: '3' }, touch: true,
 };
 const CTRL_P1 = {
   up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
-  pochete: ['KeyF'], set: ['KeyG'], spike: ['KeyH'],
-  jump: ['Space'], dive: ['ShiftLeft'], label: { pochete: 'F', set: 'G', spike: 'H' },
+  pochete: ['KeyF', 'TP'], set: ['KeyG', 'TL'], spike: ['KeyH', 'TC'],
+  jump: ['Space', 'TJ'], dive: ['ShiftLeft', 'TD'], label: { pochete: 'F', set: 'G', spike: 'H' }, touch: true,
 };
 const CTRL_P2 = {
   up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
@@ -82,7 +87,8 @@ addEventListener('keydown', e => {
   globalKey(e);
 });
 addEventListener('keyup', e => { keys.delete(e.code); edgeUp.add(e.code); });
-addEventListener('blur', () => keys.clear());
+addEventListener('blur', () => { keys.clear(); touchMove.on = false; });
+addEventListener('pointerdown', audioInit);
 
 function globalKey(e) {
   if (e.code === 'KeyM') { muted = !muted; return; }
@@ -100,6 +106,7 @@ function readHuman(p) {
   i.mx = (held(c.right) ? 1 : 0) - (held(c.left) ? 1 : 0);
   i.my = (held(c.down) ? 1 : 0) - (held(c.up) ? 1 : 0);
   if (i.mx && i.my) { i.mx *= 0.7071; i.my *= 0.7071; }
+  if (c.touch && touchMove.on) { i.mx = touchMove.x; i.my = touchMove.y; }
   i.pochete = edge(c.pochete); i.set = edge(c.set); i.spike = edge(c.spike);
   i.jump = edge(c.jump); i.dive = edge(c.dive);
   i.holds = { pochete: held(c.pochete), set: held(c.set), spike: held(c.spike) };
@@ -110,7 +117,7 @@ function readHuman(p) {
 /* ============================== ÁUDIO =============================== */
 let AC = null, master = null, noiseBuf = null, muted = false;
 function audioInit() {
-  if (AC) return;
+  if (AC) { if (AC.state === 'suspended') AC.resume().catch(() => {}); return; }
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
     master = AC.createGain(); master.gain.value = 0.45; master.connect(AC.destination);
@@ -957,13 +964,18 @@ function buildBG() {
 
 function fit() {
   const st = document.getElementById('stage');
-  const w = st.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = st.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2);
   canvas.width = Math.round(w * dpr); canvas.height = Math.round(w * dpr * 9 / 16);
   kScale = canvas.width / W;
-  st.style.setProperty('--u', (w / 1280) + 'px');
+  const compact = innerHeight < 560;                          // celular na horizontal: menus mais compactos
+  document.body.classList.toggle('compact', compact);
+  document.body.classList.toggle('portrait', IS_TOUCH && innerHeight > innerWidth);
+  st.style.setProperty('--u', (w / (compact ? 900 : 1280)) + 'px');
+  document.documentElement.style.setProperty('--vh1', (innerHeight / 100) + 'px');
   buildBG();
 }
 addEventListener('resize', fit);
+addEventListener('orientationchange', () => setTimeout(fit, 250));
 
 /* ---- desenho de personagem (vista de cima) ---- */
 function drawShadow(x, y, rx, ry, a) { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.beginPath(); ctx.ellipse(sx(x), sy(y), rx, ry, 0, 0, TAU); ctx.fill(); }
@@ -1083,12 +1095,12 @@ function drawMarkers() {
     const [col, kind] = zoneColor(b.z - p.z), near = d < 1.3;
     ctx.strokeStyle = col; ctx.globalAlpha = near ? 0.95 : 0.45; ctx.lineWidth = near ? 4 : 2.5;
     ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), 1.2 * PPM, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
-    const lab = p.ctrl.label[kind];
+    const lab = (IS_TOUCH ? TOUCH_LABEL : p.ctrl.label)[kind], tk = IS_TOUCH ? 1.45 : 1;
     const bx = sx(b.x, b.z) + 16 * zs(b.z), by = sy(b.y, b.z) - 16 * zs(b.z);
-    ctx.font = 'bold 15px Trebuchet MS, Arial'; ctx.textAlign = 'center';
-    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(bx, by, 11, 0, TAU); ctx.fill();
+    ctx.font = `bold ${15 * tk}px Trebuchet MS, Arial`; ctx.textAlign = 'center';
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(bx, by, 11 * tk, 0, TAU); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = kind === 'set' ? '#000' : '#fff'; ctx.fillText(lab, bx, by + 5);
+    ctx.fillStyle = kind === 'set' ? '#000' : '#fff'; ctx.fillText(lab, bx, by + 5 * tk);
   }
 }
 
@@ -1121,7 +1133,7 @@ function drawHUD() {
   if (S.mode > 0) ctx.fillText(`${S.size} x ${S.size} · ${S.target} PONTOS · ${DIFF_LABEL[S.diff]}`, cx, y + 106);
 
   // dica de controles
-  if (S.mode > 0) {
+  if (S.mode > 0 && !IS_TOUCH) {
     const c = S.mode === 2 ? null : CTRL_SOLO;
     ctx.font = 'bold 13px Trebuchet MS, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.72)';
     const txt = S.mode === 2 && !ON.on ? 'J1: WASD · F pochete · G levantar · H cortar · Espaço pular · Shift esq. mergulho      J2: Setas · Num1 pochete · Num2 levantar · Num3 cortar · Num0 pular · Num. mergulho'
@@ -1135,9 +1147,9 @@ function drawHUD() {
   if (S.state === 'serve' && S.mode > 0 && S.serverP) {
     const p = S.serverP;
     if (p.human && p.local) {
-      const L = p.ctrl.label, sv = p.serve;
+      const L = IS_TOUCH ? TOUCH_LABEL : p.ctrl.label, sv = p.serve, tk = IS_TOUCH ? 1.35 : 1;
       if (!sv.key) {
-        ctx.font = 'bold 17px Trebuchet MS, Arial'; ctx.textAlign = 'center';
+        ctx.font = `bold ${17 * tk}px Trebuchet MS, Arial`; ctx.textAlign = 'center';
         outlineText(`SEGURE ${L.pochete} (por baixo) · ${L.set} (flutuante) · ${L.spike} (viagem)  —  mova para ajustar`, W / 2, H - 40, '#fff');
       } else {
         const s = p.team ? -1 : 1, tx = NET_X + s * (0.9 + clamp(sv.power, 0, 1.15) * 6.9), x = sx(tx), y = sy(sv.ty);
@@ -1154,7 +1166,7 @@ function drawHUD() {
         roundRect(ctx, bx, by, Math.max(2, gw), 12, 6); ctx.fillStyle = gg; ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(bx + 90 * (1.0 / 1.15), by - 2, 2, 16);
         ctx.restore();
-        ctx.font = 'bold 16px Trebuchet MS, Arial'; ctx.textAlign = 'center';
+        ctx.font = `bold ${16 * tk}px Trebuchet MS, Arial`; ctx.textAlign = 'center';
         outlineText('Solte para sacar · cima/baixo mira o lado', W / 2, H - 40, '#fff');
       }
     }
@@ -1198,7 +1210,7 @@ function render() {
   }
   ctx.globalAlpha = 1;
   for (const q of floats) {
-    const k = q.t / q.life; ctx.globalAlpha = 1 - k * k; ctx.font = `bold ${q.size}px Trebuchet MS, Arial`; ctx.textAlign = 'center';
+    const k = q.t / q.life; ctx.globalAlpha = 1 - k * k; ctx.font = `bold ${q.size * (IS_TOUCH ? 1.4 : 1)}px Trebuchet MS, Arial`; ctx.textAlign = 'center';
     outlineText(q.text, sx(q.x, q.z), sy(q.y, q.z) - 20 - k * 30, q.col, 'rgba(0,0,0,.8)', 4);
   }
   ctx.globalAlpha = 1;
@@ -1464,6 +1476,61 @@ $('btnOnBack').onclick = () => { onlineClose(); show('online', false); show('men
 $('onCode').addEventListener('keydown', e => { if (e.key === 'Enter') onlineJoin($('onCode').value); e.stopPropagation(); });
 $('onCode').addEventListener('keyup', e => e.stopPropagation());
 
+/* ============================== TOQUE ============================== */
+(function touchUI() {
+  const body = document.body, zone = $('joyzone'), base = $('joybase'), knob = $('joyknob');
+  let jid = null, ox = 0, oy = 0;
+  const radius = () => Math.max(46, innerHeight * 0.13);
+  function joyMove(e) {
+    const R = radius(), dx = e.clientX - ox, dy = e.clientY - oy, len = Math.hypot(dx, dy) || 1;
+    const k = Math.min(len, R);
+    knob.style.transform = `translate(${dx / len * k}px, ${dy / len * k}px)`;
+    const m = clamp((len / R - 0.15) / 0.55, 0, 1);            // zona morta e velocidade total a ~70%
+    touchMove.on = true; touchMove.x = dx / len * m; touchMove.y = dy / len * m;
+  }
+  function joyEnd() { jid = null; touchMove.on = false; touchMove.x = touchMove.y = 0; base.classList.remove('on'); knob.style.transform = ''; }
+  zone.addEventListener('pointerdown', e => {
+    if (jid !== null) return;
+    jid = e.pointerId; ox = e.clientX; oy = e.clientY;
+    try { zone.setPointerCapture(e.pointerId); } catch (x) { /* ok */ }
+    base.style.left = ox + 'px'; base.style.top = oy + 'px'; base.classList.add('on');
+    joyMove(e); e.preventDefault();
+  });
+  zone.addEventListener('pointermove', e => { if (e.pointerId === jid) joyMove(e); });
+  for (const t of ['pointerup', 'pointercancel']) zone.addEventListener(t, e => { if (e.pointerId === jid) joyEnd(); });
+
+  document.querySelectorAll('.tb').forEach(btn => {
+    const code = btn.dataset.code;
+    const down = e => { e.preventDefault(); if (!keys.has(code)) { keys.add(code); edgeDown.add(code); } btn.classList.add('on'); try { btn.setPointerCapture(e.pointerId); } catch (x) { /* ok */ } };
+    const up = e => { e.preventDefault(); if (keys.has(code)) { keys.delete(code); edgeUp.add(code); } btn.classList.remove('on'); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('lostpointercapture', up);
+  });
+  $('btnPauseT').onclick = () => { if (S.ui === 'play' && !ON.on) setPause(!S.paused); };
+  const fs = $('btnFull'), root = document.documentElement;
+  if (!(root.requestFullscreen || root.webkitRequestFullscreen)) fs.classList.add('hidden');
+  fs.onclick = () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const p = (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+        if (p && p.then) p.then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (x) { /* ok */ } }).catch(() => {});
+      }
+    } catch (x) { /* ok */ }
+  };
+  document.addEventListener('contextmenu', e => { if (IS_TOUCH) e.preventDefault(); });
+  addEventListener('touchstart', () => { if (!IS_TOUCH) { IS_TOUCH = true; fit(); } }, { passive: true });
+  // classes no body para o CSS mostrar/esconder os controles
+  let lastKey = '';
+  setInterval(() => {
+    const k = [IS_TOUCH, S.ui, ON.on, S.paused].join();
+    if (k === lastKey) return; lastKey = k;
+    body.classList.toggle('touch', IS_TOUCH); body.dataset.ui = S.ui;
+    body.classList.toggle('online', ON.on); body.classList.toggle('paused', S.paused);
+    if (!(IS_TOUCH && S.ui === 'play')) joyEnd();
+  }, 150);
+})();
+
 /* ============================== LOOP ================================ */
 let last = performance.now(), acc = 0;
 function frame(now) {
@@ -1494,7 +1561,7 @@ function sim(seconds, diff) {
   S.ui = saved[0];
   return { points, longestRally: +longest.toFixed(1), stuck, serves, score: S.score.slice() };
 }
-window.Volei = { S, ball, ON, get teams() { return teams; }, step, sim, startMatch, startServe, applySnap, guestFrame };
+window.Volei = { S, ball, ON, keys, edgeDown, touchMove, get teams() { return teams; }, step, sim, startMatch, startServe, applySnap, guestFrame };
 
 fit();
 S.theme = opts.theme; S.size = opts.size;

@@ -2,7 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#07101f">
 <title>Vôlei Arcade</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -16,6 +19,7 @@
       <h1>VÔLEI<span>ARCADE</span></h1>
       <p class="tag">de 1 a 6 jogadores por equipe · câmera de cima · quanto mais alta a bola, maior ela fica</p>
 
+      <div class="groups">
       <div class="group"><label>Modo</label>
         <div class="seg" data-key="mode">
           <button data-val="1">1 JOGADOR</button>
@@ -48,6 +52,7 @@
           <button data-val="praia">PRAIA</button>
           <button data-val="ginasio">GINÁSIO</button>
         </div>
+      </div>
       </div>
 
       <div class="actions">
@@ -120,6 +125,8 @@
           <p class="small">Segure <b>Num 1</b> (por baixo), <b>Num 2</b> (flutuante) ou <b>Num 3</b> (viagem). A barra enche: solte na faixa verde. <b>Num 8/5</b> (ou W/S) mira o lado.</p>
           <h3>Rodízio</h3>
           <p class="small">A cada vez que sua equipe recupera o saque, todos giram uma posição (com 3 a 6 jogadores) e quem chega ao fundo à direita saca. Com 2 jogadores, o saque alterna.</p>
+          <h3>No celular</h3>
+          <p class="small">Arraste na metade esquerda da tela para mover (joystick). Botões à direita: <b>P</b> pochete, <b>L</b> levantada, <b>C</b> cortada, <b>⤒</b> pular/bloquear, <b>D</b> mergulho. No saque, segure P, L ou C e solte; o joystick para cima ou para baixo mira o lado.</p>
           <h3>Dicas</h3>
           <p class="small">A sombra mostra onde a bola está no chão. O círculo no piso mostra onde ela vai chegar na altura do toque. São 3 toques por time (2 com 1 jogador só), e o mesmo jogador não toca duas vezes seguidas quando há companheiros. <b>Esc</b> pausa · <b>M</b> som.</p>
         </div>
@@ -152,6 +159,19 @@
     </div>
   </div>
 </div>
+<div id="touch">
+  <div id="joyzone"></div>
+  <div id="joybase"><div id="joyknob"></div></div>
+  <div id="joyghost"></div>
+  <button class="tb tc" data-code="TC"><b>C</b><small>cortar</small></button>
+  <button class="tb tp" data-code="TP"><b>P</b><small>pochete</small></button>
+  <button class="tb tl" data-code="TL"><b>L</b><small>levantar</small></button>
+  <button class="tb tj" data-code="TJ"><b>⤒</b><small>pular</small></button>
+  <button class="tb td" data-code="TD"><b>D</b><small>mergulho</small></button>
+  <button id="btnPauseT" class="tiny" aria-label="Pausar">❚❚</button>
+</div>
+<button id="btnFull" class="tiny" aria-label="Tela cheia">⛶</button>
+<div id="rotate"><div><div class="phone">📱</div><p>Gire o celular para o modo paisagem</p></div></div>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="game.js"></script>
 </body>
