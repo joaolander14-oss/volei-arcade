@@ -420,13 +420,17 @@ const HIT = {
 const passSpot = p => ({ x: NET_X - (p.team ? -1 : 1) * (S.size === 1 ? 1.9 : 2.5), y: clamp(setterOf(p).y, 0.8, 7.2) });
 const setSpot  = p => ({ x: NET_X - (p.team ? -1 : 1) * 1.4, y: clamp(attackerFor(p).y, 0.6, 7.4) });
 
+// a bola só pode ser tocada (fora o bloqueio) enquanto estiver do lado do próprio jogador
+const ownSide = p => p.team ? ball.x >= NET_X - 0.02 : ball.x <= NET_X + 0.02;
+
 function reach(p, kind) {
   const b = ball, d = Math.hypot(b.x - p.x, b.y - p.y), rz = b.z - p.z;
+  if (!ownSide(p)) return false;
   switch (kind) {
     case 'pochete': return d < 1.2 && rz > -0.15 && rz < 1.6;
     case 'set':     return d < 1.05 && rz > 0.9 && rz < 2.6;
     case 'tip':     return d < 1.2 && rz > 1.5 && rz < 3.0;
-    case 'spike':   return p.z > 0.15 && d < 1.35 && rz > 1.5 && rz < 3.0;
+    case 'spike':   return p.z > 0.15 && d < 1.2 && rz > 1.5 && rz < 3.0;
     case 'dive':    return d < 1.9 && rz < 1.1 && rz > -0.2;
   }
   return false;
@@ -434,6 +438,7 @@ function reach(p, kind) {
 function canTouch(p) {
   const b = ball;
   if (b.state !== 'live') return false;
+  if (b.fromServe && b.lastTeam === p.team) return false;          // a equipe de quem saca não toca no próprio saque
   if (S.size >= 2 && b.lastPlayer === p && b.lastTeam === p.team && b.touches > 0) return 'lock';
   if (b.cool > 0 && b.lastTeam === p.team) return false;
   return true;
@@ -446,6 +451,7 @@ function tryIntent(p) {
   else if (t === 'set') { if (p.z > 0.3 ? reach(p, 'tip') : reach(p, 'set')) kind = p.z > 0.3 ? 'tip' : 'set'; }
   else if (t === 'spike' && reach(p, 'spike')) kind = 'spike';
   if (!kind) return;
+  if (ball.fromServe && (kind === 'spike' || kind === 'tip')) return;   // saque não se corta nem se empurra
   const ok = canTouch(p);
   if (ok === 'lock') { if (p.lockCd <= 0) { p.lockCd = 0.8; floatText(p.x, p.y, 1.8, 'JÁ TOCOU', '#ff8a8a', 15); } return; }
   if (!ok) return;
@@ -740,7 +746,7 @@ function planTeam(tm) {
   const land = predictAt(0);
   const landsMine = land && sideOf(land.x) === tm;
   const done = b.lastTeam === tm ? b.touches : 0;
-  const MT = maxT(), mine = landsMine && (b.lastTeam !== tm || done < MT);
+  const MT = maxT(), mine = landsMine && !(b.fromServe && b.lastTeam === tm) && (b.lastTeam !== tm || done < MT);
   if (!mine) { formation(tm); return; }
   if (b.lastTeam !== tm && outOfCourt(land, 0.3 + (1 - Dd.smart) * 0.3)) { formation(tm); return; }
 
