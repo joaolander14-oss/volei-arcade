@@ -176,3 +176,22 @@ body.compact .cols { gap: calc(var(--u) * 22); }
 body.compact .bigscore { font-size: calc(var(--u) * 52); }
 body.compact .roomcode { font-size: calc(var(--u) * 44); }
 body.compact .join input { font-size: calc(var(--u) * 20); padding: calc(var(--u) * 7); }
+
+/* ---------- lobby online com várias pessoas ---------- */
+.panel.lobby { width: calc(var(--u) * 900); max-height: 96%; overflow-y: auto; touch-action: pan-y; }
+.lobbygrid { display: grid; grid-template-columns: 1.1fr 1fr; gap: calc(var(--u) * 24); text-align: left; }
+.lobbygrid .roomcode { text-align: center; }
+.lobbygrid .groups.cfg .group { margin: calc(var(--u) * 6) 0; }
+.lobbygrid .group label { width: calc(var(--u) * 100); }
+.rlist { display: flex; flex-direction: column; gap: calc(var(--u) * 5); max-height: calc(var(--u) * 190); overflow-y: auto; margin: calc(var(--u) * 6) 0; }
+.rrow {
+  text-align: left; cursor: pointer; padding: calc(var(--u) * 7) calc(var(--u) * 12); border-radius: calc(var(--u) * 10);
+  font: bold calc(var(--u) * 14) "Trebuchet MS", Arial, sans-serif; color: #fff; background: #16295c; border: calc(var(--u) * 2) solid;
+}
+.rrow.t0 { border-color: #ff8a2a; } .rrow.t1 { border-color: #2f9bff; }
+.rrow:disabled { cursor: default; opacity: .8; }
+.rrow:not(:disabled):hover { background: #1f3a7e; }
+body.compact .panel.lobby { width: calc(var(--u) * 1120); }
+body.compact .rlist { max-height: calc(var(--u) * 120); }
+body.compact .rrow { padding: calc(var(--u) * 5) calc(var(--u) * 10); font-size: calc(var(--u) * 13); }
+body.compact .lobbygrid { gap: calc(var(--u) * 18); }

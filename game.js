@@ -38,7 +38,10 @@ const S = {
   toast: null, over: false, paused: false, rally: 0, winner: -1,
 };
 // Online: o anfitrião simula tudo e manda "fotos" do jogo; o convidado só desenha e manda os comandos.
-const ON = { on: false, host: false, guest: false, lobby: false, peer: null, conn: null, code: '', ev: [], tick: 0, in: { mx: 0, my: 0, holds: {}, e: {} } };
+const ON = {
+  on: false, host: false, guest: false, lobby: false, peer: null, conn: null, code: '', ev: [], tick: 0,
+  conns: new Map(), roster: [], myId: 0, myTeam: 0, nextId: 1, inputs: {}, cfg: null,
+};
 const emit = (...a) => { if (ON.on && ON.host) ON.ev.push(a); };
 let teams = [];
 let allPlayers = [];
@@ -225,14 +228,22 @@ const slotPos = (tm, k, N, dy = 0) => {
 const pickServer = tm => { const T = teams[tm], N = S.size; if (N >= 3) T.serverIdx = (N - T.rot) % N; };
 const maxT = () => S.size === 1 ? 2 : 3;     // toques por time: 2 com 1 jogador, 3 com 2 a 6
 const sideOf = x => x < NET_X ? 0 : 1;
-const teamName = tm => ON.on ? (tm === (ON.guest ? 1 : 0) ? 'VOCÊ' : 'RIVAL') : S.mode === 1 ? (tm ? 'CPU' : 'VOCÊ') : S.mode === 2 ? (tm ? 'JOGADOR 2' : 'JOGADOR 1') : (tm ? 'TIME B' : 'TIME A');
+const teamName = tm => ON.on ? (tm === ON.myTeam ? 'SEU TIME' : (teams[tm] && teams[tm].players.some(q => q.human) ? 'RIVAIS' : 'CPU')) : S.mode === 1 ? (tm ? 'CPU' : 'VOCÊ') : S.mode === 2 ? (tm ? 'JOGADOR 2' : 'JOGADOR 1') : (tm ? 'TIME B' : 'TIME A');
 
-function startMatch(mode) {
+function startMatch(mode, humans) {
   S.mode = mode; S.score = [0, 0]; S.over = false; S.winner = -1; S.serving = 0; S.rally = 0;
   teams = [0, 1].map(tm => ({ players: Array.from({ length: S.size }, (_, k) => mkPlayer(tm, k)), serverIdx: 0, rot: 0 }));
   allPlayers = teams.flatMap(t => t.players);
-  if (mode >= 1) { const h = teams[0].players[0]; h.human = h.local = true; h.ctrl = mode === 1 ? CTRL_SOLO : CTRL_P1; }
-  if (mode === 2) { const h = teams[1].players[0]; h.human = h.local = true; h.ctrl = CTRL_P2; }
+  if (humans) {                       // online: cada pessoa ocupa uma vaga numa equipe
+    for (const h of humans) {
+      const q = teams[h.team] && teams[h.team].players[h.idx]; if (!q) continue;
+      q.human = true; q.netId = h.id; q.name = h.name; q.ctrl = CTRL_SOLO;
+      q.local = h.id === ON.myId; q.remote = !q.local;
+    }
+  } else {
+    if (mode >= 1) { const h = teams[0].players[0]; h.human = h.local = true; h.ctrl = mode === 1 ? CTRL_SOLO : CTRL_P1; }
+    if (mode === 2) { const h = teams[1].players[0]; h.human = h.local = true; h.ctrl = CTRL_P2; }
+  }
   S.rotated = false;
   parts.length = 0; rings.length = 0; floats.length = 0; S.toast = null;
   startServe();
@@ -855,7 +866,7 @@ function step(dt) {
     }
   }
   if (S.mode === 0 && S.score[0] + S.score[1] > 40) startMatch(0);
-  if (ON.on && ON.host && ++ON.tick % 3 === 0) sendSnap();
+  if (ON.on && ON.host && ++ON.tick % (ON.conns.size > 4 ? 4 : 3) === 0) sendSnap();
   edgeDown.clear(); edgeUp.clear();
 }
 
@@ -1028,7 +1039,7 @@ function drawPlayer(p) {
     ctx.beginPath(); ctx.moveTo(-8, -4); ctx.lineTo(8, -4); ctx.lineTo(0, 7); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.font = 'bold 13px Trebuchet MS, Arial'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)';
-    const lbl = ON.on ? (p.local ? 'VOCÊ' : 'RIVAL') : S.mode === 2 ? (p.team ? 'J2' : 'J1') : 'VOCÊ'; ctx.strokeText(lbl, 0, -9); ctx.fillStyle = '#fff'; ctx.fillText(lbl, 0, -9);
+    const lbl = ON.on ? (p.local ? 'VOCÊ' : (p.name || 'JOGADOR')) : S.mode === 2 ? (p.team ? 'J2' : 'J1') : 'VOCÊ'; ctx.strokeText(lbl, 0, -9); ctx.fillStyle = '#fff'; ctx.fillText(lbl, 0, -9);
     ctx.restore();
     if (lying) { ctx.save(); ctx.font = 'bold 12px Arial'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.textAlign = 'center'; ctx.fillText('•••', px, py + 28); ctx.restore(); }
   }
@@ -1237,6 +1248,7 @@ document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click'
   if (k === 'theme') { S.theme = opts.theme; buildBG(); }
   if (k === 'size' && S.ui === 'menu') { S.size = opts.size; startMatch(0); }
   refreshSeg();
+  if (ON.host && ON.lobby && !ON.on) broadcastLobby();
 }));
 
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
@@ -1257,9 +1269,9 @@ function beginGame() {
 function showOver() {
   S.ui = 'over';
   const you = S.mode === 1 || ON.on;
-  const mine = ON.on && ON.guest ? 1 : 0;
+  const mine = ON.on ? ON.myTeam : 0;
   $('overTitle').textContent = you ? (S.winner === mine ? 'VITÓRIA!' : 'DERROTA') : `${teamName(S.winner)} VENCEU!`;
-  $('btnAgain').classList.toggle('hidden', ON.on && ON.guest);
+  $('btnAgain').classList.toggle('hidden', ON.on && !ON.host);
   $('overScore').textContent = `${S.score[0]} x ${S.score[1]}`;
   show('over', true);
 }
@@ -1273,16 +1285,65 @@ $('btnAgain').onclick = () => (ON.on && ON.host ? startOnlineHost() : beginGame(
 $('btnMenu').onclick = showMenu;
 
 /* ============================== ONLINE ============================== */
-const ONLINE_PREFIX = 'volei-arcade-';
+// Várias pessoas por sala (até 12), cada uma em uma equipe (A ou B); o resto das vagas é do computador.
+// O anfitrião simula tudo e manda "fotos" do jogo; os convidados só desenham e mandam os comandos.
+const ONLINE_PREFIX = 'volei-arcade-', MAX_HUMANS = 12, MAX_TEAM = 6;
 const randCode = () => { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let t = ''; for (let i = 0; i < 5; i++) t += a[(Math.random() * a.length) | 0]; return t; };
 const onStatus = t => { $('onStatus').textContent = t || ''; };
-function onView(v) { show('onHome', v === 'home'); show('onLobby', v === 'lobby'); show('btnOnStart', v === 'lobby' && ON.host); }
 const NO_NET = 'Não foi possível carregar o serviço de salas (PeerJS). Confira a internet.';
+const cleanName = t => String(t || '').replace(/[^A-Za-zÀ-ÿ0-9 _-]/g, '').trim().slice(0, 10) || 'JOGADOR';
+let myName = 'JOGADOR';
+try { myName = cleanName(localStorage.getItem('volei_name') || 'JOGADOR'); } catch (e) { /* ok */ }
+$('onName').value = myName;
+function readName() { myName = cleanName($('onName').value); $('onName').value = myName; try { localStorage.setItem('volei_name', myName); } catch (e) { /* ok */ } }
+
+function onView(v) {
+  show('onHome', v === 'home'); show('onLobby', v === 'lobby');
+  show('btnOnStart', v === 'lobby' && ON.host); show('onCfg', v === 'lobby' && ON.host);
+  $('onPanel').classList.toggle('lobby', v === 'lobby');
+}
+const teamCounts = () => [0, 1].map(t => ON.roster.filter(r => r.team === t).length);
+const effSize = () => { const c = teamCounts(); return clamp(Math.max(opts.size, c[0], c[1]), 1, MAX_TEAM); };
+
+function renderLobby() {
+  const box = $('onList'); box.innerHTML = '';
+  for (const r of ON.roster) {
+    const bt = document.createElement('button');
+    bt.className = 'rrow t' + r.team;
+    bt.textContent = `${r.name}${r.id === 0 ? ' (anfitrião)' : ''}${r.id === ON.myId ? ' · você' : ''} — EQUIPE ${r.team ? 'B' : 'A'}`;
+    bt.disabled = !(ON.host || r.id === ON.myId);
+    bt.onclick = () => changeTeam(r.id);
+    box.appendChild(bt);
+  }
+  const c = teamCounts(), cfg = ON.host ? { size: effSize(), diff: opts.diff, target: opts.target, theme: opts.theme } : (ON.cfg || {});
+  const dn = { facil: 'fácil', normal: 'normal', dificil: 'difícil' }[cfg.diff] || '';
+  $('onInfo').textContent = `Equipe A: ${c[0]} · Equipe B: ${c[1]}. Vagas sem pessoa ficam com o computador.`;
+  $('onSummary').textContent = `${cfg.size || '?'} por equipe · ${dn} · ${cfg.target || '?'} pontos · ${cfg.theme === 'ginasio' ? 'ginásio' : 'praia'}`;
+  if (ON.host) {
+    const n = ON.conns.size;
+    $('onWho').textContent = n ? `${n + 1} jogadores na sala. Toque numa linha para trocar a pessoa de equipe.` : 'Aguardando outros jogadores entrarem...';
+    $('btnOnStart').disabled = !n;
+  } else $('onWho').textContent = 'Conectado! Aguardando o anfitrião começar a partida...';
+}
+function changeTeam(id) {
+  const r = ON.roster.find(x => x.id === id); if (!r) return;
+  const nt = 1 - r.team;
+  if (teamCounts()[nt] >= MAX_TEAM) return onStatus('Equipe cheia (máximo 6).');
+  onStatus('');
+  if (ON.host) { r.team = nt; broadcastLobby(); }
+  else if (id === ON.myId && ON.conn && ON.conn.open) ON.conn.send({ t: 'team', team: nt });
+}
+function broadcastLobby() {
+  const m = { t: 'lobby', roster: ON.roster, cfg: { size: effSize(), diff: opts.diff, target: opts.target, theme: opts.theme } };
+  for (const c of ON.conns.values()) if (c.open) { try { c.send(m); } catch (e) { /* ok */ } }
+  renderLobby();
+}
 
 function onlineClose() {
   ON.on = ON.host = ON.guest = ON.lobby = false;
-  const c = ON.conn, pr = ON.peer;
-  ON.conn = ON.peer = null; ON.code = ''; ON.ev.length = 0;
+  const cs = [...ON.conns.values()], c = ON.conn, pr = ON.peer;
+  ON.conns.clear(); ON.conn = ON.peer = null; ON.code = ''; ON.ev.length = 0; ON.roster = []; ON.inputs = {}; ON.myId = 0; ON.myTeam = 0; ON.nextId = 1;
+  for (const x of cs) { try { x.close(); } catch (e) { /* ok */ } }
   try { if (c) c.close(); } catch (e) { /* ok */ }
   try { if (pr) pr.destroy(); } catch (e) { /* ok */ }
 }
@@ -1295,27 +1356,25 @@ function onlineLost(msg) {
 
 function onlineCreate() {
   if (typeof Peer === 'undefined') return onStatus(NO_NET);
-  onlineClose(); ON.host = true; onStatus('Criando sala...');
+  readName(); onlineClose(); ON.host = true; onStatus('Criando sala...');
   const attempt = n => {
     const code = randCode(), peer = new Peer(ONLINE_PREFIX + code);
     ON.peer = peer;
     peer.on('open', () => {
-      ON.code = code; ON.lobby = true; onStatus(''); onView('lobby');
+      ON.code = code; ON.lobby = true; ON.myId = 0; ON.myTeam = 0; ON.roster = [{ id: 0, name: myName, team: 0 }];
+      onStatus(''); onView('lobby');
       $('onCodeShow').textContent = code;
       $('onLink').textContent = location.origin + location.pathname + '?sala=' + code;
-      $('onWho').textContent = 'Aguardando o convidado entrar...'; $('btnOnStart').disabled = true;
+      renderLobby();
     });
     peer.on('connection', conn => {
-      if (ON.conn && ON.conn.open) { conn.on('open', () => { conn.send({ t: 'full' }); setTimeout(() => { try { conn.close(); } catch (e) { /* ok */ } }, 300); }); return; }
-      ON.conn = conn;
-      conn.on('open', () => { $('onWho').textContent = 'Convidado conectado! Pode começar.'; $('btnOnStart').disabled = false; });
-      conn.on('data', hostRecv);
-      const gone = () => {
-        if (ON.conn !== conn) return;
-        if (ON.on) onlineLost('O convidado saiu da partida.');
-        else { ON.conn = null; $('onWho').textContent = 'O convidado saiu. Aguardando outro...'; $('btnOnStart').disabled = true; }
-      };
-      conn.on('close', gone); conn.on('error', () => {});
+      conn.on('open', () => {
+        if (ON.on) { conn.send({ t: 'full', why: 'A partida já começou.' }); setTimeout(() => { try { conn.close(); } catch (e) { /* ok */ } }, 300); }
+        else if (ON.roster.length >= MAX_HUMANS) { conn.send({ t: 'full', why: 'Sala cheia.' }); setTimeout(() => { try { conn.close(); } catch (e) { /* ok */ } }, 300); }
+      });
+      conn._seen = performance.now();
+      conn.on('data', m => hostRecv(conn, m));
+      conn.on('close', () => hostDrop(conn)); conn.on('error', () => {});
     });
     peer.on('error', e => {
       if (e.type === 'unavailable-id' && n < 6) { try { peer.destroy(); } catch (x) { /* ok */ } attempt(n + 1); return; }
@@ -1331,21 +1390,17 @@ function onlineJoin(code) {
   code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (code.length < 4) return onStatus('Digite o código da sala.');
   if (typeof Peer === 'undefined') return onStatus(NO_NET);
-  onlineClose(); onStatus('Conectando à sala ' + code + '...');
+  readName(); onlineClose(); ON.code = code; onStatus('Conectando à sala ' + code + '...');
   const peer = new Peer(); ON.peer = peer;
   const timer = setTimeout(() => { if (!ON.lobby) { onlineClose(); onStatus('Tempo esgotado. Confira o código e a internet.'); } }, 15000);
   peer.on('open', () => {
     const conn = peer.connect(ONLINE_PREFIX + code, { reliable: true });
     ON.conn = conn;
-    conn.on('open', () => {
-      clearTimeout(timer); ON.guest = true; ON.lobby = true; ON.code = code; onStatus(''); onView('lobby');
-      $('onCodeShow').textContent = code; $('onLink').textContent = '';
-      $('onWho').textContent = 'Conectado! Aguardando o anfitrião começar a partida...';
-      conn.send({ t: 'hello' });
-    });
+    conn.on('open', () => { ON.seen = performance.now(); conn.send({ t: 'hello', name: myName }); });
     conn.on('data', guestRecv);
     conn.on('close', () => { clearTimeout(timer); if (ON.conn === conn) onlineLost('O anfitrião saiu.'); });
     conn.on('error', () => {});
+    ON.pendingTimer = timer;
   });
   peer.on('error', e => {
     clearTimeout(timer);
@@ -1354,45 +1409,79 @@ function onlineJoin(code) {
   });
 }
 
-function hostRecv(m) {
+function hostRecv(conn, m) {
   if (!m || typeof m !== 'object') return;
-  if (m.t === 'in') {
-    const r = ON.in;
+  conn._seen = performance.now();
+  if (m.t === 'hello') {
+    if (conn._id != null || ON.on || ON.roster.length >= MAX_HUMANS) return;
+    const c = teamCounts(), team = c[0] <= c[1] ? 0 : 1, id = ON.nextId++;
+    conn._id = id; ON.conns.set(id, conn);
+    ON.roster.push({ id, name: cleanName(m.name), team: c[team] >= MAX_TEAM ? 1 - team : team });
+    conn.send({ t: 'welcome', id });
+    broadcastLobby();
+  } else if (m.t === 'team') {
+    const r = ON.roster.find(x => x.id === conn._id); if (!r || ON.on) return;
+    const nt = m.team ? 1 : 0;
+    if (nt !== r.team && teamCounts()[nt] < MAX_TEAM) { r.team = nt; broadcastLobby(); }
+  } else if (m.t === 'in' && conn._id != null) {
+    const r = ON.inputs[conn._id] || (ON.inputs[conn._id] = { mx: 0, my: 0, holds: {}, e: {} });
     r.mx = clamp(+m.mx || 0, -1, 1); r.my = clamp(+m.my || 0, -1, 1);
     r.holds = { pochete: !!(m.holds && m.holds.pochete), set: !!(m.holds && m.holds.set), spike: !!(m.holds && m.holds.spike) };
     if (m.e) for (const k of ['pochete', 'set', 'spike', 'jump', 'dive']) if (m.e[k]) r.e[k] = true;
   }
 }
+function hostDrop(conn) {
+  const id = conn._id; if (id == null) return;
+  conn._id = null; ON.conns.delete(id); delete ON.inputs[id];
+  const r = ON.roster.find(x => x.id === id); ON.roster = ON.roster.filter(x => x.id !== id);
+  if (ON.on) {
+    for (const q of allPlayers) if (q.netId === id) { q.human = false; q.remote = false; q.local = false; }
+    if (r) { toast('SAIU', r.name, '#ff9a9a'); }
+  } else if (ON.lobby) broadcastLobby();
+}
 function guestRecv(m) {
   if (!m || typeof m !== 'object') return;
-  if (m.t === 'start' && m.cfg) { ON.on = true; applyOnlineMatch(m.cfg); }
-  else if (m.t === 's' && ON.on) applySnap(m);
-  else if (m.t === 'full') onlineLost('Sala cheia.');
+  ON.seen = performance.now();
+  switch (m.t) {
+    case 'welcome': ON.myId = m.id | 0; ON.guest = true; ON.lobby = true; clearTimeout(ON.pendingTimer); onStatus(''); onView('lobby'); break;
+    case 'lobby':
+      if (!Array.isArray(m.roster)) return;
+      ON.roster = m.roster.map(r => ({ id: r.id | 0, name: cleanName(r.name), team: r.team ? 1 : 0 })); ON.cfg = m.cfg || null;
+      { const me = ON.roster.find(r => r.id === ON.myId); if (me) ON.myTeam = me.team; }
+      $('onCodeShow').textContent = ON.code || ''; $('onLink').textContent = '';
+      renderLobby(); break;
+    case 'start': if (Array.isArray(m.humans) && m.cfg) { ON.on = true; applyOnlineMatch(m.cfg, m.humans); } break;
+    case 's': if (ON.on) applySnap(m); break;
+    case 'full': onlineLost(m.why || 'Sala indisponível.'); break;
+  }
 }
 
-function applyOnlineMatch(cfg) {
+function applyOnlineMatch(cfg, humans) {
   audioInit();
   S.ui = 'play'; S.paused = false;
   S.size = clamp(cfg.size | 0, 1, 6); S.diff = DIFF[cfg.diff] ? cfg.diff : 'normal';
   S.target = [7, 11, 15].includes(cfg.target) ? cfg.target : 11; S.theme = cfg.theme === 'ginasio' ? 'ginasio' : 'praia';
+  const me = humans.find(h => h.id === ON.myId); ON.myTeam = me ? me.team : 0;
   show('menu', false); show('help', false); show('pause', false); show('over', false); show('online', false);
-  buildBG(); startMatch(2);
-  const me = ON.guest ? teams[1].players[0] : teams[0].players[0], other = ON.guest ? teams[0].players[0] : teams[1].players[0];
-  me.ctrl = CTRL_SOLO; me.local = true; me.remote = false;
-  other.ctrl = CTRL_SOLO; other.local = false; other.remote = true;
-  ON.in = { mx: 0, my: 0, holds: {}, e: {} };
+  buildBG();
+  startMatch(2, humans.map(h => ({ id: h.id | 0, name: cleanName(h.name), team: h.team ? 1 : 0, idx: h.idx | 0 })));
+  ON.inputs = {};
   edgeDown.clear(); edgeUp.clear();
 }
 function startOnlineHost() {
-  if (!ON.host || !ON.conn || !ON.conn.open) return;
-  const cfg = { size: opts.size, diff: opts.diff, target: opts.target, theme: opts.theme };
+  if (!ON.host || !ON.conns.size || ON.on) { if (!(ON.host && ON.on)) return; }
+  const cfg = { size: effSize(), diff: opts.diff, target: opts.target, theme: opts.theme };
+  const next = [0, 0], humans = ON.roster.map(r => ({ id: r.id, name: r.name, team: r.team, idx: next[r.team]++ }));
   ON.on = true; ON.tick = 0; ON.ev.length = 0;
-  applyOnlineMatch(cfg);
-  ON.conn.send({ t: 'start', cfg });
+  applyOnlineMatch(cfg, humans);
+  const m = { t: 'start', cfg, humans };
+  for (const c of ON.conns.values()) if (c.open) { try { c.send(m); } catch (e) { /* ok */ } }
 }
 
 function readRemote(p) {
-  const r = ON.in, i = p.input, e = r.e;
+  const r = ON.inputs[p.netId], i = p.input;
+  if (!r) { i.mx = i.my = 0; i.pochete = i.set = i.spike = i.jump = i.dive = false; i.holds = {}; i.hold = null; i.aim = null; return; }
+  const e = r.e;
   i.mx = r.mx; i.my = r.my;
   i.pochete = !!e.pochete; i.set = !!e.set; i.spike = !!e.spike; i.jump = !!e.jump; i.dive = !!e.dive;
   e.pochete = e.set = e.spike = e.jump = e.dive = false;
@@ -1402,7 +1491,6 @@ function readRemote(p) {
 
 const r2 = v => Math.round(v * 100) / 100;
 function sendSnap() {
-  const c = ON.conn; if (!c || !c.open) return;
   const b = ball, m = {
     t: 's', sc: S.score, st: S.state, sv: S.serving, ra: S.rally, nw: r2(S.netWob), ov: S.over ? 1 : 0, wi: S.winner, ui: S.ui === 'over' ? 1 : 0, sh: r2(S.shake), pt: r2(S.pointT),
     b: [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), r2(b.vz), b.state, b.lastTeam, b.touches, r2(b.rot)],
@@ -1410,7 +1498,7 @@ function sendSnap() {
     ev: ON.ev.splice(0),
   };
   if (S.state === 'serve' && S.serverP && S.serverP.serve) { const q = S.serverP.serve; m.sp = [S.serverP.team, S.serverP.idx, q.key || '', r2(q.power), r2(q.ty), q.stage]; }
-  try { c.send(m); } catch (e) { /* ok */ }
+  for (const c of ON.conns.values()) if (c.open) { try { c.send(m); } catch (e) { /* ok */ } }
 }
 function applySnap(m) {
   if (!Array.isArray(m.b) || !Array.isArray(m.p)) return;
@@ -1460,12 +1548,24 @@ function guestFrame(dt) {
 // o convidado manda seus comandos ~30 vezes por segundo
 setInterval(() => {
   if (!ON.on || !ON.guest || !ON.conn || !ON.conn.open) return;
-  const p = teams[1] && teams[1].players[0]; if (!p) return;
+  const p = allPlayers.find(q => q.local); if (!p) return;
   readHuman(p);
   const i = p.input;
   try { ON.conn.send({ t: 'in', mx: i.mx, my: i.my, holds: i.holds, e: { pochete: i.pochete, set: i.set, spike: i.spike, jump: i.jump, dive: i.dive } }); } catch (e) { /* ok */ }
   edgeDown.clear(); edgeUp.clear();
 }, 33);
+
+// "estou vivo": quem fica calado por muito tempo (aba fechada, sem internet) é tirado da sala
+setInterval(() => {
+  const now = performance.now();
+  if (ON.host) {
+    for (const c of [...ON.conns.values()]) if (c._seen && now - c._seen > 9000) { hostDrop(c); try { c.close(); } catch (e) { /* ok */ } }
+    if (!ON.on) for (const c of ON.conns.values()) if (c.open) { try { c.send({ t: 'ping' }); } catch (e) { /* ok */ } }
+  } else if (ON.guest && ON.conn && ON.conn.open) {
+    try { ON.conn.send({ t: 'ping' }); } catch (e) { /* ok */ }
+    if (ON.seen && now - ON.seen > 12000) onlineLost('Conexão com o anfitrião perdida.');
+  }
+}, 2000);
 
 $('btnOnline').onclick = () => { show('menu', false); show('online', true); onView('home'); onStatus(''); };
 $('btnOnCreate').onclick = onlineCreate;
@@ -1473,8 +1573,11 @@ $('btnOnJoin').onclick = () => onlineJoin($('onCode').value);
 $('btnOnStart').onclick = startOnlineHost;
 $('btnOnCopy').onclick = () => { const t = $('onLink').textContent; try { navigator.clipboard.writeText(t); onStatus('Link copiado!'); } catch (e) { onStatus(t); } };
 $('btnOnBack').onclick = () => { onlineClose(); show('online', false); show('menu', true); onStatus(''); };
-$('onCode').addEventListener('keydown', e => { if (e.key === 'Enter') onlineJoin($('onCode').value); e.stopPropagation(); });
-$('onCode').addEventListener('keyup', e => e.stopPropagation());
+for (const id of ['onCode', 'onName']) {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter' && id === 'onCode') onlineJoin($('onCode').value); e.stopPropagation(); });
+  $(id).addEventListener('keyup', e => e.stopPropagation());
+}
+$('onName').addEventListener('change', readName);
 
 /* ============================== TOQUE ============================== */
 (function touchUI() {
@@ -1561,7 +1664,7 @@ function sim(seconds, diff) {
   S.ui = saved[0];
   return { points, longestRally: +longest.toFixed(1), stuck, serves, score: S.score.slice() };
 }
-window.Volei = { S, ball, ON, keys, edgeDown, touchMove, get teams() { return teams; }, step, sim, startMatch, startServe, applySnap, guestFrame };
+window.Volei = { S, ball, ON, hostRecv, guestRecv, renderLobby, keys, edgeDown, touchMove, get teams() { return teams; }, step, sim, startMatch, startServe, applySnap, guestFrame };
 
 fit();
 S.theme = opts.theme; S.size = opts.size;

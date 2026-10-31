@@ -65,21 +65,46 @@
 
   <!-- ONLINE -->
   <div id="online" class="overlay hidden">
-    <div class="panel small-panel">
+    <div class="panel small-panel" id="onPanel">
       <h2>ONLINE</h2>
       <div id="onHome">
-        <p class="small">O anfitrião escolhe tamanho, dificuldade e pontos no menu antes de criar a sala. O outro jogador entra com o código e joga contra você.</p>
+        <p class="small">Crie uma sala e passe o código ou o link. Cada pessoa escolhe uma equipe (A ou B); dá para jogar juntos na mesma equipe contra o computador, ou até 12 pessoas divididas em duas equipes de até 6.</p>
+        <div class="group"><label>Seu nome</label><div class="join"><input id="onName" maxlength="10" autocomplete="off" placeholder="NOME"></div></div>
         <div class="actions col">
           <button id="btnOnCreate" class="big">CRIAR SALA</button>
-          <div class="join"><input id="onCode" maxlength="5" placeholder="CÓDIGO" autocomplete="off"><button id="btnOnJoin" class="alt">ENTRAR</button></div>
+          <div class="join"><input id="onCode" maxlength="5" placeholder="CÓDIGO" autocomplete="off" autocapitalize="characters"><button id="btnOnJoin" class="alt">ENTRAR</button></div>
         </div>
       </div>
       <div id="onLobby" class="hidden">
-        <p class="small">Código da sala</p>
-        <div class="roomcode" id="onCodeShow">-----</div>
-        <p class="small linkline" id="onLink"></p>
-        <p class="small" id="onWho"></p>
-        <div class="actions col">
+        <div class="lobbygrid">
+          <div class="lcol">
+            <p class="small">Código da sala</p>
+            <div class="roomcode" id="onCodeShow">-----</div>
+            <p class="small linkline" id="onLink"></p>
+            <div class="rlist" id="onList"></div>
+            <p class="small" id="onInfo"></p>
+          </div>
+          <div class="lcol">
+            <p class="small"><b>Configuração</b></p>
+            <p class="small" id="onSummary"></p>
+            <div id="onCfg" class="groups cfg">
+              <div class="group"><label>Por equipe</label>
+                <div class="seg" data-key="size"><button data-val="1">1</button><button data-val="2">2</button><button data-val="3">3</button><button data-val="4">4</button><button data-val="5">5</button><button data-val="6">6</button></div>
+              </div>
+              <div class="group"><label>Dificuldade</label>
+                <div class="seg" data-key="diff"><button data-val="facil">FÁCIL</button><button data-val="normal">NORMAL</button><button data-val="dificil">DIFÍCIL</button></div>
+              </div>
+              <div class="group"><label>Pontos</label>
+                <div class="seg" data-key="target"><button data-val="7">7</button><button data-val="11">11</button><button data-val="15">15</button></div>
+              </div>
+              <div class="group"><label>Cenário</label>
+                <div class="seg" data-key="theme"><button data-val="praia">PRAIA</button><button data-val="ginasio">GINÁSIO</button></div>
+              </div>
+            </div>
+            <p class="small" id="onWho"></p>
+          </div>
+        </div>
+        <div class="actions">
           <button id="btnOnStart" class="big">COMEÇAR</button>
           <button id="btnOnCopy" class="alt">COPIAR LINK</button>
         </div>
